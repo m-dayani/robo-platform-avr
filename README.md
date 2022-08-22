@@ -7,7 +7,7 @@ This project is based on the [Obdev V-USB Library](https://www.obdev.at/products
 
 ## Hardware
 
-The hardware is initially designed for ATMEL ATmega8 AVR microcontroller using the Cadsoft Eagle (now 
+The hardware was initially designed for the ATMEL ATmega8 AVR microcontroller using the Cadsoft Eagle (now 
 [Autodesk Eagle](https://www.autodesk.com/products/eagle/free-download)).
 Schematics and PCB layouts are available for SMD and TH (Through hole).
 
