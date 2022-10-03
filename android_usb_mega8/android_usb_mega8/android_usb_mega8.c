@@ -1,4 +1,3 @@
-
 /* Name:	android_usb_mega8.c
  * Project:	USB Interface to android device, 
  *			For robotic purposes, No HID Implementation
@@ -11,22 +10,22 @@
  *				2. Using read/write functions
  *				3. Using USB interrupt or poll-based
  *				4. HID USB devices.
- * Note2:	Never use strcmp on a received pointer like *data to
- *			decode a command as strcmp only works for null-terminated strings!
- * Note3:	It seems that for large messages sent to device from host,
- *			for every 8 bytes we start from the beginning of the buffer although
+ * Note2:	It seems that for large messages sent to device from host,
+ *			for every 8 bytes we start from the beginning of the buffer while
  *			it has more than 8 bytes. I assume this might be related to
  *			the internal mechanism of data handling of either of V-USB or Android Sys.
  *			We can easily overcome this by defining a global variable to
  *			keep track of the current position of buffer!
- * Note4:	For car manual control, I attached a driver and it has
- *			and enable with is assigned to PORTB2 and is alwayse on.
+ * Note3:	For car manual control, I attached a driver and it has
+ *			and enable with is assigned to PORTB2 and is always on.
  */
 
-#define F_CPU 12000000UL
+#define F_CPU 12000000L
 
+#define __DELAY_BACKWARD_COMPATIBLE__
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 #include <util/delay.h>
@@ -34,74 +33,88 @@
 #include "usbdrv.h"
 #include "oddebug.h"
 
+
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
+
+
 #define LED_BIT 0
 #define LED_DDR DDRB
 #define LED_PORT PORTB
 
-#define OUT_CTRL_DDR DDRC
-#define OUT_CTRL_PORT PORTC
+#define OUT_CTRL_DDR DDRB
+#define OUT_CTRL_PORT PORTB
 
-enum USB_COMMANDS {
-	BROADCAST,
-	REPORT_SENSOR,	//send long msg to device
-	UPDATE_STATE,	//get message (state updates) from device
-	RUN_TEST		//run predefined test sequence:
-					//test: read, write, sensor availability, output modification
-} ucmd;
+#define LEN_USB_BUFF_IN 64
+#define LEN_USB_BUFF_OUT 64
+#define LEN_ADC_BUFF 16
 
-#define SENSORS_ADC_AVAILABLE 0
-#define SENSORS_EXT_AVAILABLE 0
-
-#define SENSOR_BUFFER_LEN 64
-#define STATE_BUFFER_LEN 64
-
-#define DEFAULT_TEST_IN_MESSAGE "Hello"
-#define DEFAULT_TEST_OUT_MESSAGE { 'w', 'o', 'r', 'l', 'd', '\0' }
+#define DEFAULT_TEST_IN_MESSAGE "in-code-9372"
+#define DEFAULT_TEST_OUT_MESSAGE { 'o', 'u', 't', '-', 'c', 'o', 'd', 'e', '-', '6', '3', '3', '4' }
+#define DEFAULT_TEST_OUT_MSG_LEN 13
 #define DEFAULT_OUT_CTRL_INIT_VAL 0x00
+
+#define SENSORS_ADC_AVAILABLE 1
+#define SENSORS_EXT_AVAILABLE 0
+#define ROBO_CTRL_AVAILABLE 1
+
+#define ADC_N_CHANNELS 1
+#define ADC_PRESCALER 128
+#define ADC_SRC_FREQ_MHZ 12
+#define ADC_RESOLUTION_BITS 10
+
+
+enum UsbCommand {
+    CMD_BROADCAST,
+    CMD_UPDATE_OUTPUT,
+    CMD_GET_SENSOR_INFO,
+    CMD_GET_CMD_RES,
+    CMD_ADC_START,
+    CMD_ADC_READ,
+    CMD_ADC_STOP,
+    CMD_RUN_TEST
+} command_flag;
 
 
 static uchar ledStat = 0;
-static uchar testFlag = 0;
 
-/* ------------------------------------ USB Data Structures ------------------------------------- */
+static uchar currChAdc = 0;
+static uchar adcStartedFlag = 0;
 
-static uchar sensorBuffer[SENSOR_BUFFER_LEN];	//used for sending sensor data
-//The only buffer for both in/out messaging
-static uchar stateBuffer[STATE_BUFFER_LEN];
-static uchar stateBuffPos = 0; //Testing Note3 claim.
+// ACD results buffer (8 2-byte channels)
+static uchar adcBuffer[LEN_ADC_BUFF];
 
+// USB input (read) buffer
+static uchar inputBuffer[LEN_USB_BUFF_IN];
+// USB output (write) buffer
+static uchar outputBuffer[LEN_USB_BUFF_OUT];
+//Testing Note3 claim.
+static uchar stateBuffPos = 0;
 
 /* =================================== Function Declarations =================================== */
 
-uchar is_all_sensors_available();
-void updateStates();
-void updateMotor1();
-
-/* ===================================== Helper functions ====================================== */
+/* ===================================== Config. & Helpers ===================================== */
 
 void mainInit()
 {
-	/*for(int i=0; i<sizeof(reportBuffer); i++) // clear report initially
-		reportBuffer[i] = 0;*/
-	
 	LED_DDR |= 1 << LED_BIT;
-	OUT_CTRL_DDR = 0xff;
-	//Enable motor driver: Enable wire attached to PB2
-	DDRB |= 0x04;
-	PORTB |= 0x04;
-	//OUT_CTRL_PORT = DEFAULT_OUT_CTRL_INIT_VAL;
-	stateBuffer[0] = DEFAULT_OUT_CTRL_INIT_VAL;
-	updateStates();
 }
 
 static void setLED(uchar newValue)
 {
 	ledStat = newValue;
 	if(ledStat) {
-		LED_PORT |= 1 << LED_BIT;    // LED on
+		LED_PORT |= 1 << LED_BIT;       // LED on
 	}
 	else {
-		LED_PORT &= ~(1 << LED_BIT);      // LED off
+		LED_PORT &= ~(1 << LED_BIT);    // LED off
 	}
 }
 
@@ -115,86 +128,168 @@ void toggleLED(void)
 	}
 }
 
-void setTestFlag(uchar state)
+void clearBuffer(uchar* buff, uchar offset, uchar len)
 {
-	testFlag = state;
+    for (uchar i = offset, totalLen = offset + len; i < totalLen; i++) {
+        buff[i] = 0;
+    }
 }
 
-uchar getTestFlag()
+void insertBuffer(uchar* lBuff, uchar lBuffLen, uchar* rBuff, uchar rBuffLen, uchar offset)
 {
-	return testFlag;
+    for (uchar i = offset, totalBuffLen = offset + rBuffLen; i < lBuffLen && i < totalBuffLen; i++) {
+        lBuff[i] = rBuff[i-offset];
+    }
+}
+
+void readBuffer(uchar* lBuff, uchar lBuffLen, uchar* rBuff, uchar rBuffLen, uchar offset)
+{
+    for (uchar i = offset, totalBuffLen = offset + rBuffLen; i < lBuffLen && i < totalBuffLen; i++) {
+        lBuff[i-offset] = rBuff[i];
+    }
+}
+
+uchar decodeData(uchar* input, uchar lenInput, uchar* output, uchar lenOutput, uchar* state)
+{
+    if (lenInput < 2) {
+        return 0;
+    }
+
+    uchar lenData = input[0];
+    *state = input[1];
+
+    lenOutput = min(lenData, lenOutput);
+    readBuffer(output, lenOutput, input, lenInput, 2);
+
+    return lenOutput;
+}
+
+void encodeData(uchar* input, uchar lenInput, uchar* output, uchar lenOutput, uchar state)
+{
+    if (lenOutput < 2) {
+        return;
+    }
+
+    output[0] = lenInput;
+    output[1] = state; // command or data
+
+    insertBuffer(output, lenOutput, input, lenInput, 2);
+}
+
+uchar cmdCompare(char *lCmd, uchar* rCmd, uchar len)
+{
+    uchar lCmdLen = sizeof(lCmd);
+
+    for (uchar i = 0; i < len && i < lCmdLen; i++) {
+        if (lCmd[i] != rCmd[i])
+            return 0;
+    }
+
+    return 1;
+}
+
+void setResponseOK(uchar state) 
+{
+    clearBuffer(inputBuffer, 0, LEN_USB_BUFF_IN);
+    uchar buff[] = {state};
+    encodeData(buff, 1, inputBuffer, LEN_USB_BUFF_IN, 0);
+}
+
+/* ====================================== Sensor Functions ===================================== */
+
+/* --------------------------------------- ADC Functions --------------------------------------- */
+
+static uchar isAdcStarted()
+{
+    return adcStartedFlag;
+}
+
+static void adcStart()
+{
+    adcStartedFlag = 1;
+    ADCSRA |= (1 << ADSC);
+}
+
+static void adcStop() {
+    adcStartedFlag = 0;
+    ADCSRA &= ~(1 << ADSC);
+}
+
+static void adcInit(void)
+{
+    //channel: ADC0, vRef = AVCC (5v), right adjust (for 10 bit res)
+    ADMUX |= (1 << REFS0); //| (1 << ADLAR)
+    //Pre-scaler: 128
+    ADCSRA |= (SENSORS_ADC_AVAILABLE << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); //| (1 << ADATE) | (1 << ADIE)
+    //no free running mode, no high speed mode
+    //SFIOR |= ;
+}
+
+static void adcPoll(uchar channel)
+{
+    // conversion complete?
+    if (isAdcStarted() && !(ADCSRA & (1 << ADSC))) {
+
+        uchar adcValues[2];
+        adcValues[0] = ADCL;
+        adcValues[1] = ADCH;
+
+        insertBuffer(adcBuffer, LEN_ADC_BUFF, adcValues, 2, 2 * channel);
+        
+        // for faster response, fill input buffer here
+        // WARNING: with this, we cannot send any other commands except usb read commands
+        //encodeData(adcBuffer, 2 * ADC_N_CHANNELS, inputBuffer, LEN_USB_BUFF_IN, 0);
+
+        // start next conversion *
+        ADCSRA |= (1 << ADSC);
+    }
+}
+
+/* ------------------------------------- External Sensors -------------------------------------- */
+
+/* ---------------------------------------- Management ----------------------------------------- */
+
+void setSensorsInfo() {
+
+    uchar lenInfo = 5;
+    uchar infoBuffer[lenInfo];
+
+    // first byte is status
+    infoBuffer[0] = (SENSORS_ADC_AVAILABLE) | (SENSORS_EXT_AVAILABLE < 1) | (ROBO_CTRL_AVAILABLE << 2) | (isAdcStarted() << 3);
+    // number of adc channels
+    infoBuffer[1] = ADC_N_CHANNELS;
+    // src frequency (MHz)
+    infoBuffer[2] = ADC_SRC_FREQ_MHZ;
+    // pre-scaler factor
+    infoBuffer[3] = ADC_PRESCALER;
+    // channel resolution (bits)
+    infoBuffer[4] = ADC_RESOLUTION_BITS;
+
+    // set the return buffer
+    encodeData(infoBuffer, lenInfo, inputBuffer, LEN_USB_BUFF_IN, 0);
+}
+
+/* ============================= Basic Controllers / State Modifiers =========================== */
+
+void updateState(uchar state)
+{
+    OUT_CTRL_PORT = state;
+}
+
+void ctrlInit()
+{
+    // set control port as output
+    OUT_CTRL_DDR = 0xff;
+
+    //Enable motor driver: Enable wire attached to PB2
+    OUT_CTRL_PORT |= 0x04;
 }
 
 /* ======================================== USB Section ======================================== */
 
-
 /* ----------------------------------- HID Report Descriptors ---------------------------------- */
 
-
-
 /* ------------------------------------- Helper functions -------------------------------------- */
-
-/*void buildReport(int val)
-{
-	usbMessage[0] = (uchar) val;
-	usbMessage[1] = (uchar) val >> 8;
-}
-
-void buildReport(uchar lsVal, uchar msVal)
-{
-	sensorBuffer[0] = lsVal;
-	sensorBuffer[1] = msVal;
-}*/
-
-void buildReport(uchar *arr, uchar offset, uchar len)
-{
-	uchar i;
-	for (i = offset; i < len; i++) {
-		sensorBuffer[i] = arr[i];
-	}
-}
-
-uchar processCmd(char *cmd, uchar* rcmd, uchar len)
-{
-	for (uchar i = 0; i < len; i++) {
-		if (cmd[i] != rcmd[i])
-			return 0;
-	}
-	return 1;
-}
-
-void setTestResponse(uchar *out_msg, uchar len)
-{
-	if (len+1 > SENSOR_BUFFER_LEN) {
-		return;
-	}
-	uchar i = 0;
-	for (; i < len; i++) {
-		sensorBuffer[i] = out_msg[i];
-	}
-	sensorBuffer[i] = 0;
-}
-
-void runTestSequence(uchar *data, uchar len)
-{
-	//For test purposes.
-	if (processCmd(DEFAULT_TEST_IN_MESSAGE, data, len)) {
-		uchar out_msg[] = DEFAULT_TEST_OUT_MESSAGE;
-		//check for sensors availability
-		if (is_all_sensors_available()) {
-			//send response, sensorBuffer is sent when host queries.
-			out_msg[0] = 'y';
-			setTestResponse(out_msg, 5);
-		}
-		else {
-			out_msg[0] = 'n';
-			setTestResponse(out_msg, 5);
-		}
-		//test output updates
-		toggleLED();
-	}
-	setTestFlag(0);
-}
 
 void usbRe_enumerate()
 {
@@ -206,29 +301,69 @@ void usbRe_enumerate()
 	usbDeviceConnect();
 }
 
-//Interrupt part of usb library.
+void runTestSequence()
+{
+    //send response, inputBuffer is sent when host queries.
+    uchar out_msg[] = DEFAULT_TEST_OUT_MESSAGE;
+    encodeData(out_msg, DEFAULT_TEST_OUT_MSG_LEN, inputBuffer, LEN_USB_BUFF_IN, 0);
+
+    //test output updates
+    toggleLED();
+}
+
+uchar processDataCommand(uchar lenCmd, uchar state) 
+{
+    if (state) {
+        return 0;
+    }
+
+    // currently, command flag is not used in decisions
+    if (cmdCompare(DEFAULT_TEST_IN_MESSAGE, outputBuffer, lenCmd)) {
+        //if we have a test sequence:
+        runTestSequence();
+    }
+    
+    return 1;
+}
+
+void processCommand() 
+{  
+	switch (command_flag) {
+	
+	case CMD_ADC_START:
+	    adcStart();
+	    setResponseOK(isAdcStarted());
+	    break;
+	    
+    case CMD_ADC_READ:
+        encodeData(adcBuffer, 2 * ADC_N_CHANNELS, inputBuffer, LEN_USB_BUFF_IN, 0);
+        break;
+        
+    case CMD_ADC_STOP:
+        adcStop();
+        setResponseOK(!isAdcStarted());
+        break;
+    
+	case CMD_GET_SENSOR_INFO:
+	    setSensorsInfo();
+	    break;
+	
+	default:
+	    break;
+	}
+}
+
+//Interrupt part of USB library.
 #ifdef USB_CFG_HAVE_INTRIN_ENDPOINT
 void usbInterrupt()
 {
 	if(usbInterruptIsReady()) {
-		uchar bili[2] = {'b', 'i'};
-		buildReport(bili, 0, 2); // later, use the adc values instead
-		usbSetInterrupt((void *)sensorBuffer, sizeof(sensorBuffer));
+		//uchar msg[2] = {'b', 'i'};
+		//buildReport(msg, 0, 2); // later, use the ADC values instead
+		usbSetInterrupt((void *)inputBuffer, sizeof(inputBuffer));
 	}
 }
 #endif
-
-/*void fillBufferWithRQ(uchar *buffer, usbRequest_t *rq, unsigned int offset)
-{
-	if (offset+4 > USB_BUFFER_LEN) {
-		//error
-		return;
-	}
-	buffer[offset] = rq->wValue.bytes[0];
-	buffer[offset+1] = rq->wValue.bytes[1];
-	buffer[offset+2] = rq->wIndex.bytes[0];
-	buffer[offset+3] = rq->wIndex.bytes[1];
-}*/
 
 /* --------------------------------------- Setup function -------------------------------------- */
 
@@ -237,22 +372,34 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 	usbRequest_t *rq = (void *) data;
 	
 	if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR) {
+	
+	    command_flag = rq->bRequest;
+	    
 		switch (rq->bRequest) {
-		case BROADCAST:
-			//Do nothing for now
-		case REPORT_SENSOR:
-			usbMsgPtr = sensorBuffer;
-			return sizeof(sensorBuffer);	
-		case UPDATE_STATE:
-			/*dataLength = (uchar)rq->wLength.word;
-			dataReceived = 0;*/
-			return USB_NO_MSG; // usbFunctionWrite will be called now
-		case RUN_TEST:
-			setTestFlag(1);
-			return USB_NO_MSG; // usbFunctionWrite will be called now
+
+        case CMD_UPDATE_OUTPUT:
+            updateState(rq->wValue.bytes[0]);
+            return 0;
+
+		case CMD_GET_CMD_RES:
+			usbMsgPtr = (int) inputBuffer;
+			return sizeof(inputBuffer);
+
+        case CMD_ADC_START:
+        case CMD_ADC_READ:
+        case CMD_ADC_STOP:
+		case CMD_GET_SENSOR_INFO:
+		    processCommand();
+		    return 0;
+		    
+		case CMD_RUN_TEST:
+            // usbFunctionWrite will be called now
+			return USB_NO_MSG;
+			
+		case CMD_BROADCAST:
 		default:
-			toggleLED();
-			return 0; // do nothing for now
+			//toggleLED();
+			return 0;
 		}
 	}
 	return 0;
@@ -261,13 +408,12 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 /* ------------------------------------ Read/Write functions ----------------------------------- */
 
 #if USB_CFG_IMPLEMENT_FN_WRITE
-
 //Regular 8Bytes write.
 //For at most 8 Bytes of data, writes are much simpler
 void receive8ByteDt(uchar *data, uchar len)
 {
 	for(int i = 0; i < len; i++) {
-		stateBuffer[i] = data[i];
+		outputBuffer[i] = data[i];
 	}
 }
 
@@ -276,12 +422,12 @@ void receiveBuffer(uchar *data, uchar len)
 {
 	//Put this check in every function that writes to buffer
 	//This is intended for test. Better methods can be used to prevent data loss.
-	if (stateBuffPos >= STATE_BUFFER_LEN || len+stateBuffPos > STATE_BUFFER_LEN) {
+	if (stateBuffPos >= LEN_USB_BUFF_OUT || len+stateBuffPos > LEN_USB_BUFF_OUT) {
 		stateBuffPos = 0;
 	}
 	int i = stateBuffPos;
 	for(; i < len+stateBuffPos; i++) {
-		stateBuffer[i] = data[i-stateBuffPos];
+		outputBuffer[i] = data[i-stateBuffPos];
 	}
 	stateBuffPos = i;
 }
@@ -289,27 +435,23 @@ void receiveBuffer(uchar *data, uchar len)
 /*
 	For long data in, if usbFunctionSetup returns USB_NO_MSG, this function
 	is automatically called.
-	In this case, stateBuffer is updated for both test/non-test commands
+	In this case, outputBuffer is updated for both test/non-test commands
 */
 USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len) 
 {
-	if (len > STATE_BUFFER_LEN) {
-		return 0;
-	}
-	
 	//for len > 8 Bytes use receiveBuffer instead
-	receive8ByteDt(data, len);
+	//receive8ByteDt(data, len);
 	//receiveBuffer(data, len);
+
+	uchar state = 0;
+	uchar lenCmd = decodeData(data, len, outputBuffer, LEN_USB_BUFF_OUT, &state);
 	
-	//if we have a test sequence:
-	if (getTestFlag()) {
-		runTestSequence(stateBuffer, len);
+	// process command
+	if (!processDataCommand(lenCmd, state)) {
+	    return 0;
 	}
-	else {
-		updateStates();
-	}
-	
-	return 1; // 1 if we received it all, 0 if not
+	// 1 if we received it all, 0 if not
+	return 1;
 }
 #endif
 
@@ -318,132 +460,43 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
  * usbFunctionRead() is called when the host requests a chunk of data from
  * the device. For more information, see the documentation in usbdrv/usbdrv.h.
  */
-uchar   usbFunctionRead(uchar *data, uchar len)
+USB_PUBLIC uchar usbFunctionRead(uchar *data, uchar len)
 {
-	if (len > SENSOR_BUFFER_LEN || len <= 0) {
-		return 0;
-	}
-	
-	for(uint8_t x = 0; x < len; x++) {
-		*data = sensorBuffer[x];
+    uchar i;
+	for(i = 0; i < len && i < LEN_USB_BUFF_IN; i++) {
+		*data = inputBuffer[i];
 		data++;
 	}
 
-	return len;
+	return i;
 }
 #endif
-
-/* ====================================== Sensor Functions ===================================== */
-
-/* --------------------------------------- ADC Functions --------------------------------------- */
-/*
-static void adcInit(void)
-{
-	//channel: ADC0, vRef = AVCC (5v), right adjust (for 10 bit res)
-	ADMUX |= (1 << REFS0); //| (1 << ADLAR)
-	//Pre-scaler: 125
-	ADCSRA |= (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | 
-		(1 << ADPS0); //| (1 << ADATE) | (1 << ADIE)
-	//no free running mode, no high speed mode
-	//SFIOR |= ;
-}
-
-static void adcPoll(void)
-{
-    if ( !(ADCSRA & (1 << ADSC))) { 		//adcPending &&
-       // adcPending = 0;
-		
-		uchar lval = ADCL;
-		uchar hval = ADCH;
-		buildReport(lval, hval);
-		
-		ADCSRA |= (1 << ADSC);  // start next conversion *
-    }
-}
-
-void adcStart() 
-{
-	ADCSRA |= (1 << ADSC);
-}
-*/
-
-uchar is_adc_available() {
-	return SENSORS_ADC_AVAILABLE;
-}
-
-/* ------------------------------------- External Sensors -------------------------------------- */
-
-uchar is_ext_sensors_available() {
-	return SENSORS_EXT_AVAILABLE;
-}
-
-/* ---------------------------------------- Management ----------------------------------------- */
-
-uchar is_all_sensors_available() {
-	return is_adc_available() && is_ext_sensors_available();
-}
-
-/* ============================= Basic Controllers / State Modifiers =========================== */
-
-/*
-	currently, the LS byte is the on/off control
-	state byte.
-*/
-void updateStates() 
-{
-	//setLED(stateBuffer[0]);
-	OUT_CTRL_PORT = stateBuffer[0];
-	updateMotor1();
-}
-
-void updateMotor1()
-{
-	if (stateBuffer[0] & 0x01 || stateBuffer[0] & 0x02) {
-		//enable
-		PORTB |= 0x04;
-	}
-	else {
-		//disable
-		PORTB &= ~0x04;
-	}
-}
 
 /* ============================================ Main =========================================== */
 
 int main(void)
 {
-	wdt_enable(WDTO_1S); // enable 1s watchdog timer
+    // enable 1s watchdog timer
+	wdt_enable(WDTO_1S);
 
 	mainInit();
+	ctrlInit();
+    adcInit();
 	usbInit();
-	//adcInit();
 	
 	usbRe_enumerate();
-	
-	//adcStart();
-	
-	sei(); // Enable interrupts after re-enumeration
+
+    // Enable interrupts after re-enumeration
+	sei();
 	
 	while(1) {
-		wdt_reset(); // keep the watchdog happy
+
+        // keep the watchdog happy
+		wdt_reset();
 		usbPoll();
-		//adcPoll();
+		adcPoll(currChAdc);
 		
 		//usbInterrupt();
-		/*for(int i = 0; i < 250; i++) { // wait 500 ms
-			wdt_reset(); // keep the watchdog happy
-			_delay_ms(2);
-		}
-		toggleLED();
-		stateBuffer[0] = 0x02;
-		updateStates();
-		for(int i = 0; i < 250; i++) { // wait 500 ms
-			wdt_reset(); // keep the watchdog happy
-			_delay_ms(2);
-		}
-		toggleLED();
-		stateBuffer[0] = 0x01;
-		updateStates();*/
 	}
 	
 	return 0;
