@@ -16,3 +16,14 @@ Based on the V-USB library, the algorithm handles USB interactions with an Andro
 
 The program is written in the C programming language and developed, compiled, and tested in [ATMEL AVR Studio 6.1](https://www.microchip.com/en-us/tools-resources/archives/avr-sam-mcus).
 
+## Usage
+
+The instructions to use this project are the same as any other Obdev V-USB project:
+
+- Prepare the development board
+- Implement your logic, link the library, and compile
+- Download the .hex file to the microcontroller
+- You should also install an appropriate driver to connect the board to a desktop computer. This step can be skipped for connections to Android devices (using an OTG cable, Android auto-detects the device).
+
+You can learn more about it in [this step-by-step tutorial](https://codeandlife.com/2012/01/22/avr-attiny-usb-tutorial-part-1/).
+
