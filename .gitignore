@@ -1,2 +1,7 @@
 *.zip
 backup/
+*.o
+*.bin
+*.hex
+*.txt
+.idea

@@ -2,9 +2,9 @@
  * Project:	USB Interface to android device, 
  *			For robotic purposes, No HID Implementation
  * Author:	M. Dayani
- * Created:	12/24/2019
+ * Created:	02/05/2024
  *
- * Car Continuous Controller (Sticky Directional Controls, for Linux)
+ * Quadcopter Controller (Compiled on Linux)
  */
 
 
@@ -83,6 +83,25 @@ static uchar inputBuffer[LEN_USB_BUFF_IN];
 static uchar outputBuffer[LEN_USB_BUFF_OUT];
 //Testing Note3 claim.
 static uchar stateBuffPos = 0;
+
+
+
+uchar ctrl_state = 0x00;
+
+unsigned short cnt_cycle = 0;
+
+// Make changes happen over many cycles (to be controllable by HIDs)
+const uchar max_n_cycles = 10;
+uchar cnt_n_cycle = 0;
+
+// A 50 Hz PWM pulse (20000 us)
+const uchar delay_res = 100;
+const unsigned short max_cnt_cycle = 180;
+const unsigned short max_cnt = 200;
+
+// 4 Channels for PWM Generation (to ESC)
+unsigned short cnt_a = 0;
+unsigned short cap_a = 0;
 
 /* =================================== Function Declarations =================================== */
 
@@ -259,7 +278,8 @@ void setSensorsInfo() {
 
 void updateState(uchar state)
 {
-    OUT_CTRL_PORT = state;
+    //OUT_CTRL_PORT = state;
+    ctrl_state = state;
 }
 
 void ctrlInit()
@@ -481,6 +501,41 @@ int main(void)
 		wdt_reset();
 		usbPoll();
 		adcPoll(currChAdc);
+		
+		// Poll control state and update cnt limits
+		if (ctrl_state == 0x01 && cap_a < max_cnt && cnt_n_cycle == 0) {
+		  cap_a += 1;
+		}
+		if (ctrl_state == 0x02 && cap_a > 0 && cnt_n_cycle == 0) {
+		  cap_a -= 1;
+		}
+		
+		// Update PWM state
+		if (cnt_a < cap_a) {
+		  OUT_CTRL_PORT = 0x01;
+		  cnt_a += 1;
+		}
+		else {
+		  OUT_CTRL_PORT = 0x00;
+		}
+		
+		// Update global counter
+		cnt_cycle += 1;
+		
+		// Delay
+		_delay_us(delay_res);
+		
+		// Reset counters when a cycle is complete
+		if (cnt_cycle >= max_cnt_cycle) {
+		  cnt_cycle = 0;
+		  cnt_a = 0;
+		  if (cnt_n_cycle >= max_n_cycles) {
+		    cnt_n_cycle = 0;
+		  }
+		  else {
+		    cnt_n_cycle += 1;
+		  }
+		}
 		
 		//usbInterrupt();
 	}

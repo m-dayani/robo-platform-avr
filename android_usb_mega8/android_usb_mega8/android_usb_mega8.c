@@ -335,14 +335,14 @@ void processCommand()
 	    setResponseOK(isAdcStarted());
 	    break;
 	    
-    case CMD_ADC_READ:
-        encodeData(adcBuffer, 2 * ADC_N_CHANNELS, inputBuffer, LEN_USB_BUFF_IN, 0);
-        break;
-        
-    case CMD_ADC_STOP:
-        adcStop();
-        setResponseOK(!isAdcStarted());
-        break;
+  case CMD_ADC_READ:
+      encodeData(adcBuffer, 2 * ADC_N_CHANNELS, inputBuffer, LEN_USB_BUFF_IN, 0);
+      break;
+      
+  case CMD_ADC_STOP:
+      adcStop();
+      setResponseOK(!isAdcStarted());
+      break;
     
 	case CMD_GET_SENSOR_INFO:
 	    setSensorsInfo();
@@ -373,33 +373,33 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 	
 	if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR) {
 	
-	    command_flag = rq->bRequest;
+    command_flag = rq->bRequest;
 	    
 		switch (rq->bRequest) {
 
-        case CMD_UPDATE_OUTPUT:
-            updateState(rq->wValue.bytes[0]);
-            return 0;
+    case CMD_UPDATE_OUTPUT:
+        updateState(rq->wValue.bytes[0]);
+        return 0;
 
 		case CMD_GET_CMD_RES:
-			usbMsgPtr = (int) inputBuffer;
-			return sizeof(inputBuffer);
+			  usbMsgPtr = (int) inputBuffer;
+			  return sizeof(inputBuffer);
 
-        case CMD_ADC_START:
-        case CMD_ADC_READ:
-        case CMD_ADC_STOP:
+    case CMD_ADC_START:
+    case CMD_ADC_READ:
+    case CMD_ADC_STOP:
 		case CMD_GET_SENSOR_INFO:
 		    processCommand();
 		    return 0;
 		    
 		case CMD_RUN_TEST:
             // usbFunctionWrite will be called now
-			return USB_NO_MSG;
+			  return USB_NO_MSG;
 			
 		case CMD_BROADCAST:
 		default:
-			//toggleLED();
-			return 0;
+			  //toggleLED();
+			  return 0;
 		}
 	}
 	return 0;
@@ -462,7 +462,7 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
  */
 USB_PUBLIC uchar usbFunctionRead(uchar *data, uchar len)
 {
-    uchar i;
+  uchar i;
 	for(i = 0; i < len && i < LEN_USB_BUFF_IN; i++) {
 		*data = inputBuffer[i];
 		data++;
@@ -476,22 +476,22 @@ USB_PUBLIC uchar usbFunctionRead(uchar *data, uchar len)
 
 int main(void)
 {
-    // enable 1s watchdog timer
+  // enable 1s watchdog timer
 	wdt_enable(WDTO_1S);
 
 	mainInit();
 	ctrlInit();
-    adcInit();
+  adcInit();
 	usbInit();
 	
 	usbRe_enumerate();
 
-    // Enable interrupts after re-enumeration
+  // Enable interrupts after re-enumeration
 	sei();
 	
 	while(1) {
 
-        // keep the watchdog happy
+    // keep the watchdog happy
 		wdt_reset();
 		usbPoll();
 		adcPoll(currChAdc);
