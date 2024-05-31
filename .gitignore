@@ -5,3 +5,4 @@ backup/
 *.hex
 *.txt
 .idea
+*Debug*
