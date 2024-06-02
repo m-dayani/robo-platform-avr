@@ -111,7 +111,7 @@ unsigned long t_a = 0, t_b = 0, t_c = 0, t_d = 0;
 
 /* ===================================== Config. & Helpers ===================================== */
 
-void mainInit()
+void mainInit(void)
 {
 	// LED
 	LED_DDR |= 1 << LED_BIT;
@@ -223,18 +223,18 @@ void setResponseOK(uchar state)
 
 /* --------------------------------------- ADC Functions --------------------------------------- */
 
-static uchar isAdcStarted()
+static uchar isAdcStarted(void)
 {
 	return adcStartedFlag;
 }
 
-static void adcStart()
+static void adcStart(void)
 {
 	adcStartedFlag = 1;
 	ADCSRA |= (1 << ADSC);
 }
 
-static void adcStop()
+static void adcStop(void)
 {
 	adcStartedFlag = 0;
 	ADCSRA &= ~(1 << ADSC);
@@ -275,7 +275,7 @@ static void adcPoll(uchar channel)
 
 /* ---------------------------------------- Management ----------------------------------------- */
 
-void setSensorsInfo()
+void setSensorsInfo(void)
 {
 
 	uchar lenInfo = 5;
@@ -310,7 +310,7 @@ void updateState(uchar state)
 
 /* ------------------------------------- Helper functions -------------------------------------- */
 
-void usbRe_enumerate()
+void usbRe_enumerate(void)
 {
 	usbDeviceDisconnect(); // enforce re-enumeration
 	for (int i = 0; i < 250; i++)
@@ -321,7 +321,7 @@ void usbRe_enumerate()
 	usbDeviceConnect();
 }
 
-void runTestSequence()
+void runTestSequence(void)
 {
 	// send response, inputBuffer is sent when host queries.
 	uchar out_msg[] = DEFAULT_TEST_OUT_MESSAGE;
@@ -348,7 +348,7 @@ uchar processDataCommand(uchar lenCmd, uchar state)
 	return 1;
 }
 
-void processCommand()
+void processCommand(void)
 {
 	switch (command_flag)
 	{
@@ -378,7 +378,7 @@ void processCommand()
 
 // Interrupt part of USB library.
 #ifdef USB_CFG_HAVE_INTRIN_ENDPOINT
-void usbInterrupt()
+void usbInterrupt(void)
 {
 	if (usbInterruptIsReady())
 	{
@@ -570,7 +570,7 @@ void pwmUpdateAll(void)
 	pwmUpdate(cnt_d, cap_d, 0x08);
 }
 
-void countUpdate()
+void countUpdate(void)
 {
 	cnt_a = cnt_cycle * 250 + TCNT0;
 	cnt_b = cnt_a;
@@ -578,7 +578,7 @@ void countUpdate()
 	cnt_d = cnt_a;
 }
 
-void cycleUpdate()
+void cycleUpdate(void)
 {
 	// Update global counter
 	cnt_cycle += 1;
@@ -621,7 +621,7 @@ int main(void)
 
 	mainInit();
 	adcInit();
-	usbInit();
+	//usbInit();
 	timerInit();
 
 	// Enable interrupts after re-enumeration
@@ -631,7 +631,7 @@ int main(void)
 	{
 		// keep the watchdog happy
 		wdt_reset();
-		usbPoll();
+		//usbPoll();
 		adcPoll(currChAdc);
 
 		// Update Times

@@ -6,3 +6,4 @@ backup/
 *.txt
 .idea
 *Debug*
+*build*

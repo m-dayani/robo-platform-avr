@@ -87,7 +87,7 @@ static uchar stateBuffPos = 0;
 
 /* ===================================== Config. & Helpers ===================================== */
 
-void mainInit()
+void mainInit(void)
 {
     LED_DDR |= 1 << LED_BIT;
 }
@@ -194,18 +194,18 @@ void setResponseOK(uchar state)
 
 /* --------------------------------------- ADC Functions --------------------------------------- */
 
-static uchar isAdcStarted()
+static uchar isAdcStarted(void)
 {
     return adcStartedFlag;
 }
 
-static void adcStart()
+static void adcStart(void)
 {
     adcStartedFlag = 1;
     ADCSRA |= (1 << ADSC);
 }
 
-static void adcStop()
+static void adcStop(void)
 {
     adcStartedFlag = 0;
     ADCSRA &= ~(1 << ADSC);
@@ -246,7 +246,7 @@ static void adcPoll(uchar channel)
 
 /* ---------------------------------------- Management ----------------------------------------- */
 
-void setSensorsInfo()
+void setSensorsInfo(void)
 {
 
     uchar lenInfo = 5;
@@ -294,7 +294,7 @@ void updateState(uchar state)
     }
 }
 
-void ctrlInit()
+void ctrlInit(void)
 {
     // set control port as output
     OUT_CTRL_DDR = 0xff;
@@ -309,7 +309,7 @@ void ctrlInit()
 
 /* ------------------------------------- Helper functions -------------------------------------- */
 
-void usbRe_enumerate()
+void usbRe_enumerate(void)
 {
     usbDeviceDisconnect(); // enforce re-enumeration
     for (int i = 0; i < 250; i++)
@@ -320,7 +320,7 @@ void usbRe_enumerate()
     usbDeviceConnect();
 }
 
-void runTestSequence()
+void runTestSequence(void)
 {
     // send response, inputBuffer is sent when host queries.
     uchar out_msg[] = DEFAULT_TEST_OUT_MESSAGE;
@@ -347,7 +347,7 @@ uchar processDataCommand(uchar lenCmd, uchar state)
     return 1;
 }
 
-void processCommand()
+void processCommand(void)
 {
     switch (command_flag)
     {
@@ -377,7 +377,7 @@ void processCommand()
 
 // Interrupt part of USB library.
 #ifdef USB_CFG_HAVE_INTRIN_ENDPOINT
-void usbInterrupt()
+void usbInterrupt(void)
 {
     if (usbInterruptIsReady())
     {
@@ -512,7 +512,7 @@ int main(void)
     mainInit();
     ctrlInit();
     adcInit();
-    usbInit();
+    //usbInit();
 
     usbRe_enumerate();
 
@@ -524,7 +524,7 @@ int main(void)
 
         // keep the watchdog happy
         wdt_reset();
-        usbPoll();
+        //usbPoll();
         adcPoll(currChAdc);
 
         // usbInterrupt();
