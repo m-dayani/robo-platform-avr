@@ -6,4 +6,5 @@ backup/
 *.txt
 .idea
 *Debug*
+*Release*
 *build*

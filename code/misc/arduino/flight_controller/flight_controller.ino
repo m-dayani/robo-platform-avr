@@ -18,6 +18,7 @@ Tasks:
 
 typedef unsigned char uchar;
 
+uchar led_state = 0;
 
 const int LEN_INPUT = 64;
 const int LEN_OUTPUT = 64;
@@ -125,6 +126,16 @@ ISR(TIMER0_COMPA_vect){//timer0 interrupt
   }
 }
 
+void toggle_led() {
+  if (led_state == 0) {
+    led_state = 1;
+  }
+  else {
+    led_state = 0;
+  }
+  digitalWrite(LED_BUILTIN, led_state);
+}
+
 
 void setup() {
 
@@ -151,6 +162,7 @@ void loop() {
     int len = Serial.readBytes(inputBuff, LEN_INPUT);
     
     if (len > 0) {
+      toggle_led();
       
       if (cmp_code(&inputBuff[2], inputBuff[0], inCode, LEN_IN_CODE)) {
         // test command
@@ -159,6 +171,7 @@ void loop() {
       if (inputBuff[0] == 3 && len == 3) {
         // directional commands
         ctrl_state = inputBuff[2];
+        //toggle_led();
       }
     }
   }
