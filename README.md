@@ -22,7 +22,7 @@ The instructions to use this project are the same as any other Obdev V-USB proje
 
 - Prepare the development board
 - Implement your logic, link the library, and compile
-- Download the .hex file to the microcontroller
+- Upload the .hex file to the microcontroller
 - You should also install an appropriate driver to connect the board to a desktop computer. This step can be skipped for connections to Android devices (using an OTG cable, Android auto-detects the device).
 
 You can learn more about it in [this step-by-step tutorial](https://codeandlife.com/2012/01/22/avr-attiny-usb-tutorial-part-1/).
