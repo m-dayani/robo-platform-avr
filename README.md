@@ -16,6 +16,7 @@ Based on the V-USB library, the algorithm handles USB interactions with an Andro
 
 The program is written in the C programming language and developed, compiled, and tested in [ATMEL AVR Studio 6.1](https://www.microchip.com/en-us/tools-resources/archives/avr-sam-mcus).
 
+
 ## Usage
 
 The instructions to use this project are the same as any other Obdev V-USB project:
@@ -26,4 +27,17 @@ The instructions to use this project are the same as any other Obdev V-USB proje
 - You should also install an appropriate driver to connect the board to a desktop computer. This step can be skipped for connections to Android devices (using an OTG cable, Android auto-detects the device).
 
 You can learn more about it in [this step-by-step tutorial](https://codeandlife.com/2012/01/22/avr-attiny-usb-tutorial-part-1/).
+
+_WARNING_: Be careful with fuse bits when flashing your microcontroller in Linux (using Makefile). It is recommended you do not use `program` or `fuse` targets with `make`. If you upload the wrong fuse bits, your device might not work again.
+
+## Troubleshooting
+
+In case the board does not respond to USB commands:
+
+- Check the connections
+- Make sure the program is compiled for the right microcontroller (e.g. Atmega32)
+- Make sure the frequency is correct (12MHz) and fuse bits are programmed correctly
+
+
+
 
