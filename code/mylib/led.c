@@ -31,3 +31,15 @@ void toggleLED(void)
 		setLED(1);
 	}
 }
+
+void toggle_led(void) {
+  if (ledStat == 0) {
+    ledStat = 1;
+  }
+  else {
+    ledStat = 0;
+  }
+#ifdef ARDUINO
+  digitalWrite(LED_BUILTIN, ledStat);
+#endif
+}

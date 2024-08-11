@@ -1,10 +1,16 @@
+#ifndef ARDUINO
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
+#endif
 
+#ifndef F_CPU
 #define F_CPU 12000000L
+#endif
+#ifndef ARDUINO
 #include <util/delay.h>
+#endif
 
 #include "vusb_wrapper.h"
 #include "sensors.h"
@@ -158,6 +164,21 @@ void processCommand(void)
     }
 }
 
+
+uchar cmp_code(char* code1, char lenCode1, uchar* code2, char lenCode2) {
+  if (lenCode1 != lenCode2) {
+    return 0;
+  }
+  for (int i = 0; i < lenCode1; i++) {
+    if (code1[i] != code2[i]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+
+
 // Interrupt part of USB library.
 #ifdef USB_CFG_HAVE_INTRIN_ENDPOINT
 void usbInterrupt(void)
@@ -173,6 +194,7 @@ void usbInterrupt(void)
 
 /* --------------------------------------- Setup function -------------------------------------- */
 
+#ifndef ARDUINO
 USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 {
     usbRequest_t *rq = (void *)data;
@@ -212,6 +234,7 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
     }
     return 0;
 }
+#endif
 
 /* ------------------------------------ Read/Write functions ----------------------------------- */
 

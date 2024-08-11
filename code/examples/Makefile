@@ -12,15 +12,18 @@ F_CPU = 12000000
 AVRDUDE = avrdude -c usbasp -P usb -p $(DEVICE)
 PROJ_SRC = ..
 LIB_USB = $(PROJ_SRC)/thirdparty/usbdrv
+MY_LIB = $(PROJ_SRC)/mylib
 EXAMPLES_SRC = $(PROJ_SRC)/examples
-EXE_NAME = $(EXAMPLES_SRC)/toy_car
+SRC_FILE = quadcopter
+EXE_NAME = $(EXAMPLES_SRC)/$(SRC_FILE)/$(SRC_FILE)
 # Choose your favorite programmer and interface above.
 
-COMPILE = avr-gcc -Wall -DF_CPU=$(F_CPU) -Os -I$(LIB_USB) -I. -mmcu=$(DEVICE) #-DDEBUG_LEVEL=2
+COMPILE = avr-gcc -Wall -DF_CPU=$(F_CPU) -Os -I$(LIB_USB) -I. -I$(MY_LIB) -mmcu=$(DEVICE) #-DDEBUG_LEVEL=2
 # NEVER compile the final product with debugging! Any debug output will
 # distort timing so that the specs can't be met.
 
 OBJECTS = $(LIB_USB)/usbdrv.o $(LIB_USB)/usbdrvasm.o $(LIB_USB)/oddebug.o $(EXE_NAME).o
+LIB_OBJECTS = $(MY_LIB)/controller.o $(MY_LIB)/led.o $(MY_LIB)/mypwm.o $(MY_LIB)/sensors.o $(MY_LIB)/vusb_wrapper.o
 
 # symbolic targets:
 all:	$(EXE_NAME).hex
@@ -64,11 +67,11 @@ fuse_tiny2313:	# only needed for attiny2313
 
 
 clean:
-	rm -f $(EXE_NAME).hex $(EXE_NAME).lst $(EXE_NAME).obj $(EXE_NAME).cof $(EXE_NAME).list $(EXE_NAME).map $(EXE_NAME).eep.hex $(EXE_NAME).bin $(EXE_NAME)*.o $(EXE_NAME).s $(LIB_USB)/*.o $(LIB_USB)/oddebug.s $(LIB_USB)/usbdrv.s
+	rm -f $(EXE_NAME).hex $(EXE_NAME).lst $(EXE_NAME).obj $(EXE_NAME).cof $(EXE_NAME).list $(EXE_NAME).map $(EXE_NAME).eep.hex $(EXE_NAME).bin $(EXE_NAME)*.o $(EXE_NAME).s $(LIB_USB)/*.o $(LIB_USB)/oddebug.s $(LIB_USB)/usbdrv.s $(MY_LIB)/*.o
 
 # file targets:
-$(EXE_NAME).bin:	$(OBJECTS)
-	$(COMPILE) -o $(EXE_NAME).bin $(OBJECTS)
+$(EXE_NAME).bin:	$(OBJECTS) $(LIB_OBJECTS)
+	$(COMPILE) -o $(EXE_NAME).bin $(OBJECTS) $(LIB_OBJECTS)
 
 $(EXE_NAME).hex:	$(EXE_NAME).bin
 	rm -f $(EXE_NAME).hex $(EXE_NAME).eep.hex

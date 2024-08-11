@@ -7,7 +7,9 @@
  * Quadcopter Controller
  */
 
+#ifndef F_CPU
 #define F_CPU 12000000L
+#endif
 
 #define __DELAY_BACKWARD_COMPATIBLE__
 #include <avr/io.h>
@@ -27,7 +29,6 @@
 #include "../../mylib/mypwm.h"
 #include "../../mylib/sensors.h"
 
-
 /* ============================================ Timer =========================================== */
 
 // With these settings, and 12 MHz clock, 6x250 cycles = 1 ms and
@@ -40,47 +41,52 @@ ISR(TIMER0_OVF_vect)
 
 /* ============================================ Main =========================================== */
 
-void mainInit(void)
-{
-    // LED
-    initLED();
-    // Controller
-    initController();
-}
-
-int main(void)
+void setup(void)
 {
     // enable 1s watchdog timer
     wdt_enable(WDTO_1S);
 
-    mainInit();
+    // LED
+    initLED();
+    // Controller
+    initController();
+
     adcInit();
     usbInit();
     timerInit();
-	
-	usbRe_enumerate();
+
+    usbRe_enumerate();
 
     // Enable interrupts after re-enumeration
     sei();
+}
 
+void loop(void)
+{
+    // keep the watchdog happy
+    wdt_reset();
+    usbPoll();
+    // adcPoll(currChAdc);
+
+    // Update Times
+    timeCtrlUpdateAll();
+
+    // Update Cnt Cap
+    capUpdateAll();
+
+    // Update PWM state
+    pwmUpdateAll();
+
+    countUpdate();
+    // testChannels4();
+}
+
+int main(void)
+{
+    setup();
     while (1)
     {
-        // keep the watchdog happy
-        wdt_reset();
-        usbPoll();
-        adcPoll(currChAdc);
-
-        // Update Times
-        timeCtrlUpdateAll();
-
-        // Update Cnt Cap
-        capUpdateAll();
-
-        // Update PWM state
-        pwmUpdateAll();
-
-        countUpdate();
+        loop();
     }
-
     return 0;
 }

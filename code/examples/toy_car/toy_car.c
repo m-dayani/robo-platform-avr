@@ -22,7 +22,9 @@
  *			and enable with is assigned to PORTB2 and is always on.
  */
 
+#ifndef F_CPU
 #define F_CPU 12000000L
+#endif
 
 #define __DELAY_BACKWARD_COMPATIBLE__
 #include <avr/io.h>

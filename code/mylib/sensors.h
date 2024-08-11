@@ -1,9 +1,17 @@
 #pragma once
 
+#ifndef ARDUINO
 #include <avr/io.h>
+#else
+#include <Arduino.h>
+#endif
 
+#ifndef ARDUINO
 #ifndef uchar
 #define uchar unsigned char
+#endif
+#else
+typedef unsigned char uchar;
 #endif
 
 #define LEN_ADC_BUFF 16

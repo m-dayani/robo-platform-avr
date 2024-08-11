@@ -1,10 +1,18 @@
 #pragma once
 
+#ifndef ARDUINO
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#else
+#include <Arduino.h>
+#endif
 
+#ifndef ARDUINO
 #ifndef uchar
 #define uchar unsigned char
+#endif
+#else
+typedef unsigned char uchar;
 #endif
 
 // A 50 Hz PWM pulse (20000 us)
@@ -29,7 +37,14 @@ extern unsigned int cap_a, cap_b, cap_c, cap_d;
 // Change max count based on the time of command
 extern unsigned long t_a, t_b, t_c, t_d;
 
+extern char state_a, state_b, state_c, state_d;
+extern int n_cycle;
+
 /* ==================================== Signal Gen (timer) ======================================== */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 void capUpdate(unsigned int *cap, const unsigned long t);
 
@@ -47,4 +62,20 @@ void countUpdate(void);
 
 void cycleUpdate(void);
 
+#ifndef ARDUINO
 void timerInit(void);
+#endif
+
+
+void set_timer(void);
+
+char update_state(const uchar mask, const uchar n_bit);
+
+void update_states(void);
+
+void update_cnt(unsigned long* cnt, const char state);
+
+#ifdef __cplusplus
+}
+#endif
+

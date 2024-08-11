@@ -16,72 +16,37 @@ Tasks:
 
 #include <Servo.h>
 
-typedef unsigned char uchar;
+// You need to install mylib folder for this to work
+//#define ARDUINO 1
+//#include <led.h>
+//#include <controller.h>
+//#include <mypwm.h>
+//#include <vusb_wrapper.h>
 
-uchar led_state = 0;
-
-const int LEN_INPUT = 64;
-const int LEN_OUTPUT = 64;
-char inputBuff[LEN_INPUT];
-char outputBuff[LEN_OUTPUT];
-
-const char inCode[] = "in-code-9372";
-const char outCode[] = "out-code-6334";
-const char LEN_IN_CODE = 12;
-const char LEN_OUT_CODE = 13;
-
-
-uchar ctrl_state = 0x00;
-
-char state_a = 0, state_b = 0, state_c = 0, state_d = 0;
-int cnt_a = 0, cnt_b = 0, cnt_c = 0, cnt_d = 0;
-const int max_cnt = 10000; // 5 sec at 2kHz clock
-int n_cycle = 0;
 
 Servo servo_a, servo_b, servo_c, servo_d;
 
-
-bool cmp_code(char* code1, char lenCode1, const char* code2, const char lenCode2) {
-  if (lenCode1 != lenCode2) {
-    return 0;
-  }
-  for (int i = 0; i < lenCode1; i++) {
-    if (code1[i] != code2[i]) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
 void send_test(void) {
 
-  Serial.write(LEN_OUT_CODE);
+  Serial.write(DEFAULT_TEST_OUT_MSG_LEN);
   Serial.write(0x01);
   
-  for(int i = 0; i < LEN_OUT_CODE; i++)
-    Serial.write(outCode[i]);
-}
-
-
-char update_state(const uchar mask, const uchar n_bit) {
-  bool pcond = (ctrl_state & mask) >> n_bit;
-  bool ncond = (ctrl_state & (mask << 1)) >> (n_bit + 1);
-  if (pcond) return 1;
-  else if (ncond) return -1;
-  else return 0;
-}
-
-void update_states(void) {
-  state_a = update_state(0x01, 0);
-  state_b = update_state(0x04, 2);
-  state_c = update_state(0x10, 4);
-  state_d = update_state(0x40, 6);
-}
-
-void update_cnt(int* cnt, const char state) {
-  *cnt += state;
-  if (*cnt > max_cnt) *cnt = max_cnt;
-  if (*cnt < 0) *cnt = 0;
+  //outputBuffer = DEFAULT_TEST_OUT_MESSAGE;
+  outputBuffer[0] = 'o';
+  outputBuffer[1] = 'u';
+  outputBuffer[2] = 't';
+  outputBuffer[3] = '-';
+  outputBuffer[4] = 'c';
+  outputBuffer[5] = 'o';
+  outputBuffer[6] = 'd';
+  outputBuffer[7] = 'e';
+  outputBuffer[8] = '-';
+  outputBuffer[9] = '6';
+  outputBuffer[10] = '3';
+  outputBuffer[11] = '3';
+  outputBuffer[12] = '4';
+  for(int i = 0; i < DEFAULT_TEST_OUT_MSG_LEN; i++)
+    Serial.write(outputBuffer[i]);
 }
 
 void update_pwm() {
@@ -89,27 +54,6 @@ void update_pwm() {
   servo_b.write(map(cnt_b, 0, max_cnt, 0, 180));
   servo_c.write(map(cnt_c, 0, max_cnt, 0, 180));
   servo_d.write(map(cnt_d, 0, max_cnt, 0, 180));
-}
-
-
-void set_timer() {
-
-  cli();//stop interrupts
-
-  //set timer0 interrupt at 2kHz
-  TCCR0A = 0;// set entire TCCR0A register to 0
-  TCCR0B = 0;// same for TCCR0B
-  TCNT0  = 0;//initialize counter value to 0
-  // set compare match register for 2khz increments
-  OCR0A = 124;// = (16*10^6) / (2000*64) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR0A |= (1 << WGM01);
-  // Set CS01 and CS00 bits for 64 prescaler
-  TCCR0B |= (1 << CS01) | (1 << CS00);   
-  // enable timer compare interrupt
-  TIMSK0 |= (1 << OCIE0A);
-
-  sei();//allow interrupts
 }
 
 ISR(TIMER0_COMPA_vect){//timer0 interrupt
@@ -126,20 +70,11 @@ ISR(TIMER0_COMPA_vect){//timer0 interrupt
   }
 }
 
-void toggle_led() {
-  if (led_state == 0) {
-    led_state = 1;
-  }
-  else {
-    led_state = 0;
-  }
-  digitalWrite(LED_BUILTIN, led_state);
-}
-
 
 void setup() {
 
   Serial.begin(9600);
+  Serial.setTimeout(100);
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -151,6 +86,26 @@ void setup() {
   set_timer();
 }
 
+bool usb_test_passed = false;
+
+int readSerial() {
+
+  char c = Serial.read();
+  int len = c;
+
+  c = Serial.read();
+  for (int i = 0; i < len; i++) {
+    c = Serial.read();
+    inputBuffer[i] = c;
+  }
+
+  return len;
+}
+
+String readString;
+String inCode = "in-code-9372";
+String outCode = "out-code-6334";
+
 void loop() {
 
   // Syncronization
@@ -158,26 +113,13 @@ void loop() {
   
   if (Serial.available() > 0) {
     
-    // can also use Serial.read() in a loop to receive chars
-    int len = Serial.readBytes(inputBuff, LEN_INPUT);
-    
-    if (len > 0) {
-      toggle_led();
-      
-      if (cmp_code(&inputBuff[2], inputBuff[0], inCode, LEN_IN_CODE)) {
-        // test command
-        send_test();
-      }
-      if (inputBuff[0] == 3 && len == 3) {
-        // directional commands
-        ctrl_state = inputBuff[2];
-        //toggle_led();
-      }
-    }
+    int len = Serial.readBytesUntil('\n', inputBuffer, 64);
+    Serial.write(inputBuffer, len);
+    Serial.write('\n');
   }
 
-  update_states();
-  update_pwm();
+  //update_states();
+  //update_pwm();
 
-  delay(5);
+  //delay(5);
 }
