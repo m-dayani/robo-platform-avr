@@ -22,8 +22,10 @@
 uchar inputBuffer[LEN_USB_BUFF_IN];
 // USB output (write) buffer
 uchar outputBuffer[LEN_USB_BUFF_OUT];
+uchar tempBuffer[LEN_USB_BUFF_OUT];
 // Testing Note3 claim.
 uchar stateBuffPos = 0;
+uchar lenDataCmd = 0;
 
 void clearBuffer(uchar *buff, uchar offset, uchar len)
 {
@@ -43,7 +45,7 @@ void insertBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uc
 
 void readBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uchar offset)
 {
-    for (uchar i = offset, totalBuffLen = offset + rBuffLen; i < lBuffLen && i < totalBuffLen; i++)
+    for (uchar i = offset, totalBuffLen = offset + lBuffLen; i < rBuffLen && i < totalBuffLen; i++)
     {
         lBuff[i - offset] = rBuff[i];
     }
@@ -126,11 +128,20 @@ uchar processDataCommand(uchar lenCmd, uchar state)
         return 0;
     }
 
-    // currently, command flag is not used in decisions
-    if (cmdCompare(DEFAULT_TEST_IN_MESSAGE, outputBuffer, lenCmd))
+    if (command_flag == CMD_TEST_TP)
     {
-        // if we have a test sequence:
-        runTestSequence();
+        uchar res = processTpBuff(outputBuffer, lenCmd);
+        uchar buff[] = {res};
+        encodeData(buff, 1, inputBuffer, LEN_USB_BUFF_IN, 0);
+        // encodeData(outputBuffer, lenCmd, inputBuffer, LEN_USB_BUFF_IN, 0);
+    }
+    else
+    {
+        if (cmdCompare(DEFAULT_TEST_IN_MESSAGE, outputBuffer, lenCmd))
+        {
+            // if we have a test sequence:
+            runTestSequence();
+        }
     }
 
     return 1;
@@ -164,20 +175,50 @@ void processCommand(void)
     }
 }
 
-
-uchar cmp_code(char* code1, char lenCode1, uchar* code2, char lenCode2) {
-  if (lenCode1 != lenCode2) {
-    return 0;
-  }
-  for (int i = 0; i < lenCode1; i++) {
-    if (code1[i] != code2[i]) {
-      return 0;
+uchar cmp_code(char *code1, char lenCode1, uchar *code2, char lenCode2)
+{
+    if (lenCode1 != lenCode2)
+    {
+        return 0;
     }
-  }
-  return 1;
+    for (int i = 0; i < lenCode1; i++)
+    {
+        if (code1[i] != code2[i])
+        {
+            return 0;
+        }
+    }
+    return 1;
 }
 
+void setLatencyCode(unsigned char state)
+{
+    uchar buff[] = {state};
+    encodeData(buff, 1, inputBuffer, LEN_USB_BUFF_IN, 0);
+}
 
+uchar processTpBuff(uchar *buff, uchar len)
+{
+    uchar cnt = 0;
+    for (int i = 0; i < len; i++)
+    {
+        if (i % 2 == 0)
+        {
+            if (buff[i] == 0x55)
+            {
+                cnt += 1;
+            }
+        }
+        else
+        {
+            if (buff[i] == 0xAA)
+            {
+                cnt += 1;
+            }
+        }
+    }
+    return cnt;
+}
 
 // Interrupt part of USB library.
 #ifdef USB_CFG_HAVE_INTRIN_ENDPOINT
@@ -223,8 +264,13 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
             return 0;
 
         case CMD_RUN_TEST:
+        case CMD_TEST_TP:
             // usbFunctionWrite will be called now
             return USB_NO_MSG;
+
+        case CMD_TEST_LTC:
+            setLatencyCode(rq->wValue.bytes[0]);
+            return 0;
 
         case CMD_BROADCAST:
         default:
@@ -238,20 +284,19 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 
 /* ------------------------------------ Read/Write functions ----------------------------------- */
 
-
 #if USB_CFG_IMPLEMENT_FN_WRITE
 // Regular 8Bytes write.
 // For at most 8 Bytes of data, writes are much simpler
-void receive8ByteDt(uchar *data, uchar len)
+/*void receive8ByteDt(uchar *data, uchar len)
 {
     for (int i = 0; i < len; i++)
     {
         outputBuffer[i] = data[i];
     }
-}
+}*/
 
 // Use this for large buffer writes (> 8 Bytes).
-void receiveBuffer(uchar *data, uchar len)
+/*void receiveBuffer(uchar *data, uchar len)
 {
     // Put this check in every function that writes to buffer
     // This is intended for test. Better methods can be used to prevent data loss.
@@ -265,21 +310,55 @@ void receiveBuffer(uchar *data, uchar len)
         outputBuffer[i] = data[i - stateBuffPos];
     }
     stateBuffPos = i;
-}
+}*/
 
+char receiveBuffer1(uchar *data, uchar len)
+{
+    if (len <= 0)
+    {
+        return -1;
+    }
+    if (lenDataCmd == 0)
+    {
+        lenDataCmd = data[0] + 2;
+        lenDataCmd = min(lenDataCmd, LEN_USB_BUFF_OUT);
+    }
+    int i = stateBuffPos;
+    for (; i < len + stateBuffPos && lenDataCmd > 0; i++, lenDataCmd--)
+    {
+        tempBuffer[i] = data[i - stateBuffPos];
+    }
+    stateBuffPos = i;
+
+    if (lenDataCmd <= 0)
+    {
+        stateBuffPos = 0;
+        lenDataCmd = 0;
+        return 1;
+    }
+    else
+    {
+        return -1;
+    }
+}
 
 //    For long data in, if usbFunctionSetup returns USB_NO_MSG, this function
 //    is automatically called.
 //    In this case, outputBuffer is updated for both test/non-test commands
-
 USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 {
     // for len > 8 Bytes use receiveBuffer instead
     // receive8ByteDt(data, len);
     // receiveBuffer(data, len);
+    char res = receiveBuffer1(data, len);
+    if (res <= 0)
+    {
+        return 0;
+    }
 
     uchar state = 0;
-    uchar lenCmd = decodeData(data, len, outputBuffer, LEN_USB_BUFF_OUT, &state);
+    // uchar lenCmd = decodeData(data, len, outputBuffer, LEN_USB_BUFF_OUT, &state);
+    uchar lenCmd = decodeData(tempBuffer, LEN_USB_BUFF_OUT, outputBuffer, LEN_USB_BUFF_OUT, &state);
 
     // process command
     if (!processDataCommand(lenCmd, state))

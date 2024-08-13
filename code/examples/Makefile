@@ -14,7 +14,7 @@ PROJ_SRC = ..
 LIB_USB = $(PROJ_SRC)/thirdparty/usbdrv
 MY_LIB = $(PROJ_SRC)/mylib
 EXAMPLES_SRC = $(PROJ_SRC)/examples
-SRC_FILE = quadcopter
+SRC_FILE = comm_test
 EXE_NAME = $(EXAMPLES_SRC)/$(SRC_FILE)/$(SRC_FILE)
 # Choose your favorite programmer and interface above.
 

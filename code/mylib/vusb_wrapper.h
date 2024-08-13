@@ -35,35 +35,46 @@ enum UsbCommand
     CMD_ADC_START,
     CMD_ADC_READ,
     CMD_ADC_STOP,
-    CMD_RUN_TEST
+    CMD_RUN_TEST,
+    CMD_TEST_LTC,
+    CMD_TEST_TP,
+    CMD_STR_MSG
 } command_flag;
 
 // USB input (read) buffer
 extern uchar inputBuffer[LEN_USB_BUFF_IN];
 // USB output (write) buffer
 extern uchar outputBuffer[LEN_USB_BUFF_OUT];
+// USB temp buffer (writing long messages)
+extern uchar tempBuffer[LEN_USB_BUFF_OUT];
 // Testing Note3 claim.
 extern uchar stateBuffPos;
+extern uchar lenDataCmd;
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-void clearBuffer(uchar *buff, uchar offset, uchar len);
+    void clearBuffer(uchar *buff, uchar offset, uchar len);
 
-void insertBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uchar offset);
+    void insertBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uchar offset);
 
-void readBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uchar offset);
+    void readBuffer(uchar *lBuff, uchar lBuffLen, uchar *rBuff, uchar rBuffLen, uchar offset);
 
-uchar decodeData(uchar *input, uchar lenInput, uchar *output, uchar lenOutput, uchar *state);
+    uchar decodeData(uchar *input, uchar lenInput, uchar *output, uchar lenOutput, uchar *state);
 
-void encodeData(uchar *input, uchar lenInput, uchar *output, uchar lenOutput, uchar state);
+    void encodeData(uchar *input, uchar lenInput, uchar *output, uchar lenOutput, uchar state);
 
-uchar cmdCompare(char *lCmd, uchar *rCmd, uchar len);
+    uchar cmdCompare(char *lCmd, uchar *rCmd, uchar len);
 
-void setResponseOK(uchar state);
+    void setResponseOK(uchar state);
 
-uchar cmp_code(char* code1, char lenCode1, uchar* code2, char lenCode2);
+    uchar cmp_code(char *code1, char lenCode1, uchar *code2, char lenCode2);
+
+    void setLatencyCode(unsigned char state);
+
+    uchar processTpBuff(uchar *buff, uchar len);
 
 #ifdef __cplusplus
 }
@@ -99,10 +110,12 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8]);
 #if USB_CFG_IMPLEMENT_FN_WRITE
 // Regular 8Bytes write.
 // For at most 8 Bytes of data, writes are much simpler
-void receive8ByteDt(uchar *data, uchar len);
+// void receive8ByteDt(uchar *data, uchar len);
 
 // Use this for large buffer writes (> 8 Bytes).
-void receiveBuffer(uchar *data, uchar len);
+// void receiveBuffer(uchar *data, uchar len);
+
+char receiveBuffer1(uchar *data, uchar len);
 
 /*
     For long data in, if usbFunctionSetup returns USB_NO_MSG, this function
@@ -123,5 +136,3 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len);
 USB_PUBLIC uchar usbFunctionRead(uchar *data, uchar len);
 #endif
 #endif
-
-
