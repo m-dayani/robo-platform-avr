@@ -18,6 +18,8 @@
 #include "led.h"
 #include "controller.h"
 
+#define BSZ_BASE 64
+
 // USB input (read) buffer
 uchar inputBuffer[LEN_USB_BUFF_IN];
 // USB output (write) buffer
@@ -26,6 +28,7 @@ uchar tempBuffer[LEN_USB_BUFF_OUT];
 // Testing Note3 claim.
 uchar stateBuffPos = 0;
 uchar lenDataCmd = 0;
+int tpCount = 0;
 
 void clearBuffer(uchar *buff, uchar offset, uchar len)
 {
@@ -131,8 +134,11 @@ uchar processDataCommand(uchar lenCmd, uchar state)
     if (command_flag == CMD_TEST_TP)
     {
         uchar res = processTpBuff(outputBuffer, lenCmd);
-        uchar buff[] = {res};
-        encodeData(buff, 1, inputBuffer, LEN_USB_BUFF_IN, 0);
+        tpCount += res;
+        uchar r = tpCount % BSZ_BASE;
+        uchar q = (uchar)(tpCount / BSZ_BASE);
+        uchar buff[] = {r, q};
+        encodeData(buff, 2, inputBuffer, LEN_USB_BUFF_IN, 0);
         // encodeData(outputBuffer, lenCmd, inputBuffer, LEN_USB_BUFF_IN, 0);
     }
     else
@@ -193,8 +199,8 @@ uchar cmp_code(char *code1, char lenCode1, uchar *code2, char lenCode2)
 
 void setLatencyCode(unsigned char state)
 {
-    uchar buff[] = {state};
-    encodeData(buff, 1, inputBuffer, LEN_USB_BUFF_IN, 0);
+    uchar buff[] = {state, 0};
+    encodeData(buff, 2, inputBuffer, LEN_USB_BUFF_IN, 0);
 }
 
 uchar processTpBuff(uchar *buff, uchar len)
@@ -218,6 +224,11 @@ uchar processTpBuff(uchar *buff, uchar len)
         }
     }
     return cnt;
+}
+
+void cleanStatesCmdRes(void)
+{
+    tpCount = 0;
 }
 
 // Interrupt part of USB library.
@@ -253,6 +264,8 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
             return 0;
 
         case CMD_GET_CMD_RES:
+            // reset states
+            cleanStatesCmdRes();
             usbMsgPtr = (int)inputBuffer;
             return sizeof(inputBuffer);
 

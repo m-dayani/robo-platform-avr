@@ -50,6 +50,7 @@ extern uchar tempBuffer[LEN_USB_BUFF_OUT];
 // Testing Note3 claim.
 extern uchar stateBuffPos;
 extern uchar lenDataCmd;
+extern int tpCount;
 
 #ifdef __cplusplus
 extern "C"
@@ -72,9 +73,11 @@ extern "C"
 
     uchar cmp_code(char *code1, char lenCode1, uchar *code2, char lenCode2);
 
-    void setLatencyCode(unsigned char state);
+    void setLatencyCode(uchar state);
 
     uchar processTpBuff(uchar *buff, uchar len);
+
+    void cleanStatesCmdRes(void);
 
 #ifdef __cplusplus
 }
