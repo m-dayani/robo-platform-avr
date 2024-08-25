@@ -57,6 +57,18 @@ void my_serial_write(int len, unsigned char code, unsigned char* buffer, int max
   }
 }
 
+void my_serial_write1(int len, unsigned char code, const char* buffer, int max_buff) {
+
+  if (len > max_buff) {
+    return;
+  }
+  Serial.write(len);
+  Serial.write(code);
+  for (int i = 0; i < len; i++) {
+    Serial.write(buffer[i]);
+  }
+}
+
 bool check_test(int len, unsigned char* buffer) {
 
   if (len != LenInCode) {
@@ -72,7 +84,7 @@ bool check_test(int len, unsigned char* buffer) {
 }
 
 void send_test_response() {
-  my_serial_write(LenOutCode, 0, outCode.c_str(), LenOutCode);
+  my_serial_write1(LenOutCode, 0, outCode.c_str(), LenOutCode);
 }
 
 void setup() {

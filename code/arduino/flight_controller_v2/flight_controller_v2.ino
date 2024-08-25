@@ -36,12 +36,9 @@ bool test_done = false;
 Servo servo_a, servo_b, servo_c, servo_d;
 bool pwm_mode = false;
 
-long max_cnt = 10000;
-long cnt_a = 0, cnt_b = 0, cnt_c = 0, cnt_d = 0;
-char state_a = 0, state_b = 0, state_c = 0, state_d = 0;
-// long n_cycle = 0;
-
-unsigned char ctrl_state = 0x00;
+unsigned char state_a = 0, state_b = 0, state_c = 0, state_d = 0;
+unsigned char max_cnt = 255;
+// unsigned char ctrl_state = 0x00;
 
 bool led_state = false;
 
@@ -112,85 +109,37 @@ void test_analog() {
 void update_analog() {
 
   // unsigned char value = (unsigned char) (((float) cnt_a / (float) max_cnt) * 255.0);
-  analogWrite(PWM_A, map(cnt_a, 0, max_cnt, 0, 255));
-  analogWrite(PWM_B, map(cnt_b, 0, max_cnt, 0, 255));
-  analogWrite(PWM_C, map(cnt_c, 0, max_cnt, 0, 255));
-  analogWrite(PWM_D, map(cnt_d, 0, max_cnt, 0, 255));
+  analogWrite(PWM_A, map(state_a, 0, max_cnt, 0, 255));
+  analogWrite(PWM_B, map(state_b, 0, max_cnt, 0, 255));
+  analogWrite(PWM_C, map(state_c, 0, max_cnt, 0, 255));
+  analogWrite(PWM_D, map(state_d, 0, max_cnt, 0, 255));
 }
 
 void update_pwm() {
 
-  servo_a.write(map(cnt_a, 0, max_cnt, 0, 180));
-  servo_b.write(map(cnt_b, 0, max_cnt, 0, 180));
-  servo_c.write(map(cnt_c, 0, max_cnt, 0, 180));
-  servo_d.write(map(cnt_d, 0, max_cnt, 0, 180));
+  servo_a.write(map(state_a, 0, max_cnt, 0, 180));
+  servo_b.write(map(state_b, 0, max_cnt, 0, 180));
+  servo_c.write(map(state_c, 0, max_cnt, 0, 180));
+  servo_d.write(map(state_d, 0, max_cnt, 0, 180));
 }
 
-void update_cnt(long *cnt, const char state) {
-    *cnt += state;
-    if (*cnt > max_cnt)
-        *cnt = max_cnt;
-    if (*cnt < 0)
-        *cnt = 0;
+void update_states(unsigned char* buffer, unsigned char len) {
+
+    if (len < 4) {
+      return;
+    }
+    state_a = buffer[0];
+    state_b = buffer[1];
+    state_c = buffer[2];
+    state_d = buffer[3];
 }
 
-void update_cnts(void) {
-  update_cnt(&cnt_a, state_a);
-  update_cnt(&cnt_b, state_b);
-  update_cnt(&cnt_c, state_c);
-  update_cnt(&cnt_d, state_d);
+void update_output_with_states(void) {
+  outputBuff[0] = state_a;
+  outputBuff[1] = state_b;
+  outputBuff[2] = state_c;
+  outputBuff[3] = state_d;
 }
-
-char update_state(const unsigned char mask, const unsigned char n_bit) {
-    unsigned char pcond = (ctrl_state & mask) >> n_bit;
-    unsigned char ncond = (ctrl_state & (mask << 1)) >> (n_bit + 1);
-    if (pcond)
-        return 1;
-    else if (ncond)
-        return -1;
-    else
-        return 0;
-}
-
-void update_states(void) {
-    state_a = update_state(0x01, 0);
-    state_b = update_state(0x04, 2);
-    state_c = update_state(0x10, 4);
-    state_d = update_state(0x40, 6);
-}
-
-// ISR(TIMER0_COMPA_vect){//timer0 interrupt
-//   // update timing variables
-//   update_cnts();
-
-//   n_cycle++;
-
-//   if (n_cycle > max_cnt) {
-//     n_cycle = 0;
-//     // toggle_led();
-//   }
-// }
-
-// void set_timer(void) {
-//     // cli();//stop interrupts
-//     noInterrupts();
-
-//     // set timer0 interrupt at 2kHz
-//     TCCR0A = 0; // set entire TCCR0A register to 0
-//     TCCR0B = 0; // same for TCCR0B
-//     TCNT0 = 0;  // initialize counter value to 0
-//     // set compare match register for 2khz increments
-//     OCR0A = 124; // = (16*10^6) / (2000*64) - 1 (must be <256)
-//     // turn on CTC mode
-//     TCCR0A |= (1 << WGM01);
-//     // Set CS01 and CS00 bits for 64 prescaler
-//     TCCR0B |= (1 << CS01) | (1 << CS00);
-//     // enable timer compare interrupt
-//     TIMSK0 |= (1 << OCIE0A);
-
-//     // sei();//allow interrupts
-//     interrupts();
-// }
 
 void setup_pwm(void) {
   servo_a.attach(PWM_A);
@@ -211,7 +160,6 @@ void setup() {
   if (pwm_mode) {
     setup_pwm();
   }
-  // set_timer();
 }
 
 void loop() {
@@ -230,15 +178,17 @@ void loop() {
     }
     else if (code == UsbCommand::CMD_UPDATE_OUTPUT) {
       // Directional commands
-      ctrl_state = inputBuff[0];
+      // update current states
+      update_states(inputBuff, len);
+      // send back last state -> maybe this is redundant??
+      update_output_with_states();
+      my_serial_write(len, UsbCommand::CMD_GET_CMD_RES, outputBuff, buffLen);
     }
     else {
       my_serial_write(len, code, inputBuff, buffLen);
     }
   }
 
-  update_states();
-  update_cnts();
   if (pwm_mode) {
     update_pwm();
   }
@@ -246,6 +196,5 @@ void loop() {
     update_analog();
     // test_analog();
   }
-
   // delay(5);
 }
